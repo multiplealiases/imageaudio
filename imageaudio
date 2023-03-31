@@ -114,7 +114,6 @@ ffmpeg -f u8 -ar 48000 -i - -f u8 "$tmppixrow"/big
 pushd "$tmppixrow"
 split --suffix-length=10 -d --bytes "$((rowwidth * 3))" "$tmppixrow"/big
 rm big
-ls | wc -l
 popd
 
 find "$tmppixrow" -type f | sort > "$tmplist"
