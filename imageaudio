@@ -19,6 +19,7 @@ $(usage)
 
 Defaults shown in [].
 -e, --effect         SoX effect chain []
+-r, --rate           sample rate [48000]
 -j, --jobs           number of jobs to use [$(nproc)]
 -o, --output-prefix  output prefix [filename]
 -O, --output         output name (overrides -o)
@@ -44,13 +45,14 @@ function cleanup(){
 function imageeffect(){
     base="$(basename "$1")"
     tmprow="$3"
+    sample_rate="$4"
     read -ra effect <<< "$2"
-    sox -V0 -t u8 -r 48000 -c 1 "$1" -t u8 "$tmprow"/"$base" "${effect[@]}"
+    sox -V0 -t u8 -r "$sample_rate" -c 1 "$1" -t u8 -r "$sample_rate" -c 1 "$tmprow"/"$base" "${effect[@]}"
     rm "$1"
 }
 export -f imageeffect
 
-ARGS="$(getopt --options o:,O:,h,e: --long output:,output-prefix:,help,effect: -- "$@")"
+ARGS="$(getopt --options o:,O:,h,e:,r:,p: --long output:,output-prefix:,help,effect:,rate:,pixfmt: -- "$@")"
 eval set -- "$ARGS"
 while true; do
         case "$1" in
@@ -68,6 +70,14 @@ while true; do
             ;;
         -e | --effect)
             effect="$2"
+            shift 2
+            ;;
+        -r | --rate)
+            sample_rate="$2"
+            shift 2
+            ;;
+        -p | --pixfmt)
+            pixfmt="$2"
             shift 2
             ;;
         --)
@@ -96,6 +106,7 @@ rowwidth="$(printf '%s' $orig_res | cut -dx -f 1)"
 jobs="${jobs:-$(nproc)}"
 effect="${effect:-}"
 pixfmt="${pixfmt:-rgb24}"
+sample_rate="${sample_rate:-48000}"
 
 tmppixrow="$(mktemp -d)"
 tmprow="$(mktemp -d)"
@@ -106,18 +117,18 @@ trap 'cleanup' ERR EXIT
 filename="$(basename "$filepath")"
 base_filename="${filename%.*}"
 output_prefix="${output_prefix:-$base_filename}"
-default_name="$output_prefix"-"$pixfmt"-"$effect"
+default_name="$output_prefix"-"$sample_rate"-"$pixfmt"-"$effect"
 output_name="${output_name:-$default_name}"
 
 ffmpeg -hide_banner -loglevel quiet -i "$filepath" -f rawvideo -pix_fmt "$pixfmt" - | \
-ffmpeg -hide_banner -loglevel quiet -f u8 -ar 48000 -i - -f u8 "$tmppixrow"/big
+ffmpeg -hide_banner -loglevel quiet -f u8 -ar "$sample_rate" -i - -f u8 "$tmppixrow"/big
 >&/dev/null pushd "$tmppixrow"
 split --suffix-length=10 -d --bytes "$((rowwidth * 3))" "$tmppixrow"/big
 rm big
 >&/dev/null popd
 
 find "$tmppixrow" -type f | sort > "$tmplist"
-parallel -j"$jobs" imageeffect '{1}' "'$effect'" "$tmprow" :::: "$tmplist"
+parallel -j"$jobs" imageeffect '{1}' "'$effect'" "$tmprow" "$sample_rate" :::: "$tmplist"
 
 find "$tmprow" -type f | sort | xargs cat | \
 ffmpeg -hide_banner -loglevel quiet -s "$orig_res" -pix_fmt "$pixfmt" -f rawvideo -i - "$output_name".png
