@@ -45,7 +45,7 @@ function imageeffect(){
     base="$(basename "$1")"
     tmprow="$3"
     read -ra effect <<< "$2"
-    sox -t u8 -r 48000 "$1" -t u8 "$tmprow"/"$base" "${effect[@]}"
+    sox -V0 -t u8 -r 48000 -c 1 "$1" -t u8 "$tmprow"/"$base" "${effect[@]}"
     rm "$1"
 }
 export -f imageeffect
@@ -109,15 +109,15 @@ output_prefix="${output_prefix:-$base_filename}"
 default_name="$output_prefix"-"$pixfmt"-"$effect"
 output_name="${output_name:-$default_name}"
 
-ffmpeg -i "$filepath" -f rawvideo -pix_fmt "$pixfmt" - | \
-ffmpeg -f u8 -ar 48000 -i - -f u8 "$tmppixrow"/big
-pushd "$tmppixrow"
+ffmpeg -hide_banner -loglevel quiet -i "$filepath" -f rawvideo -pix_fmt "$pixfmt" - | \
+ffmpeg -hide_banner -loglevel quiet -f u8 -ar 48000 -i - -f u8 "$tmppixrow"/big
+>&/dev/null pushd "$tmppixrow"
 split --suffix-length=10 -d --bytes "$((rowwidth * 3))" "$tmppixrow"/big
 rm big
-popd
+>&/dev/null popd
 
 find "$tmppixrow" -type f | sort > "$tmplist"
 parallel -j"$jobs" imageeffect '{1}' "'$effect'" "$tmprow" :::: "$tmplist"
 
 find "$tmprow" -type f | sort | xargs cat | \
-ffmpeg -s "$orig_res" -pix_fmt "$pixfmt" -f rawvideo -i - "$output_name".png
+ffmpeg -hide_banner -loglevel quiet -s "$orig_res" -pix_fmt "$pixfmt" -f rawvideo -i - "$output_name".png
