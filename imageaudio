@@ -131,4 +131,4 @@ find "$tmppixrow" -type f | sort > "$tmplist"
 parallel -j"$jobs" imageeffect '{1}' "'$effect'" "$tmprow" "$sample_rate" :::: "$tmplist"
 
 find "$tmprow" -type f | sort | xargs cat | \
-ffmpeg -hide_banner -loglevel quiet -s "$orig_res" -pix_fmt "$pixfmt" -f rawvideo -i - "$output_name".png
+ffmpeg -hide_banner -loglevel warning -s "$orig_res" -pix_fmt "$pixfmt" -f rawvideo -i - "$output_name".png
