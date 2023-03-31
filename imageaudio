@@ -1,0 +1,124 @@
+#!/usr/bin/env bash
+
+set -o nounset
+set -o errexit
+
+function banner() {
+    echo Apply SoX effects to images
+}
+
+function usage() {
+    echo Usage: imageaudio \[options\] filename
+}
+
+
+function help_text(){
+    cat << EOF
+$(banner)
+$(usage)
+
+Defaults shown in [].
+-e, --effect         SoX effect chain []
+-j, --jobs           number of jobs to use [$(nproc)]
+-o, --output-prefix  output prefix [filename]
+-O, --output         output name (overrides -o)
+-h, --help           this help
+EOF
+}
+
+function file_notexist(){
+    printf ''\''%s'\'': file does not exist\n' "$1"
+    exit 3
+}
+
+function file_none(){
+    echo No file was specified.
+    help_text
+    exit 4
+}
+
+function cleanup(){
+    rm -rf $tmppixrow $tmprow $tmplist
+}
+
+function imageeffect(){
+    base="$(basename "$1")"
+    tmprow="$3"
+    read -ra effect <<< "$2"
+    sox -t u8 -r 48000 "$1" -t u8 "$tmprow"/"$base" "${effect[@]}"
+    rm "$1"
+}
+export -f imageeffect
+
+ARGS="$(getopt --options o:,O:,h,e: --long output:,output-prefix:,help,effect: -- "$@")"
+eval set -- "$ARGS"
+while true; do
+        case "$1" in
+        -o | --output-prefix)
+            output_prefix="$2"
+            shift 2
+            ;;
+        -O | --output)
+            output_name="$2"
+            shift 2
+            ;;
+        -h | --help)
+            help_text
+            exit 127
+            ;;
+        -e | --effect)
+            effect="$2"
+            shift 2
+            ;;
+        --)
+            set +o nounset 
+            if [[ -z "$2" ]]
+            then 
+                file_none
+            elif [[ ! -e "$2" ]]
+            then
+                file_notexist "$2"
+            fi
+            set -o nounset
+            filepath="$2"
+            break
+            ;;
+        *)
+            printf 'How did you get here? The last args I saw were \n%s\n' "$@"
+            exit 1
+            break
+            ;;
+    esac
+done
+
+orig_res="$(ffprobe -v error -select_streams v:0 -show_entries stream=width,height -of csv=s=x:p=0 "$filepath")"
+rowwidth="$(printf '%s' $orig_res | cut -dx -f 1)"
+jobs="${jobs:-$(nproc)}"
+effect="${effect:-}"
+pixfmt="${pixfmt:-rgb24}"
+
+tmppixrow="$(mktemp -d)"
+tmprow="$(mktemp -d)"
+tmplist="$(mktemp)"
+
+trap 'cleanup' ERR EXIT
+
+filename="$(basename "$filepath")"
+base_filename="${filename%.*}"
+output_prefix="${output_prefix:-$base_filename}"
+default_name="$output_prefix"-"$pixfmt"-"$effect"
+output_name="${output_name:-$default_name}"
+
+ffmpeg -i "$filepath" -f rawvideo -pix_fmt "$pixfmt" - | \
+ffmpeg -f u8 -ar 48000 -i - -f u8 "$tmppixrow"/big
+pushd "$tmppixrow"
+split --suffix-length=10 -d --bytes "$((rowwidth * 3))" "$tmppixrow"/big
+rm big
+ls | wc -l
+popd
+
+find "$tmppixrow" -type f | sort > "$tmplist"
+parallel -j"$jobs" imageeffect '{1}' "'$effect'" "$tmprow" :::: "$tmplist"
+
+find "$tmprow" -type f | sort | xargs cat | \
+ffmpeg -s "$orig_res" -pix_fmt "$pixfmt" -f rawvideo -i - "$output_name".png
