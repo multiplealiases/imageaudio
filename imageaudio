@@ -81,9 +81,9 @@ while true; do
             shift 2
             ;;
         --)
-            set +o nounset 
+            set +o nounset
             if [[ -z "$2" ]]
-            then 
+            then
                 file_none
             elif [[ ! -e "$2" ]]
             then
