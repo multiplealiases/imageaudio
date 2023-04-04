@@ -140,5 +140,5 @@ ffmpeg -hide_banner -loglevel warning -s "$orig_res" -pix_fmt "$pixfmt" -f rawvi
 
 if [[ -n ${u8comp+x} ]]
 then
-    mogrify -evaluate subtract 50% -normalize "$output_name".png
+    mogrify -evaluate subtract 50% -evaluate multiply 2 "$output_name".png
 fi
