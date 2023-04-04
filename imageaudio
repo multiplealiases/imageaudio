@@ -23,6 +23,7 @@ Defaults shown in [].
 -j, --jobs           number of jobs to use [$(nproc)]
 -o, --output-prefix  output prefix [filename]
 -O, --output         output name (overrides -o)
+-c, --compensate     compensate for gray background
 -h, --help           this help
 EOF
 }
@@ -52,7 +53,7 @@ function imageeffect(){
 }
 export -f imageeffect
 
-ARGS="$(getopt --options o:,O:,h,e:,r:,p: --long output:,output-prefix:,help,effect:,rate:,pixfmt: -- "$@")"
+ARGS="$(getopt --options o:,O:,h,e:,r:,p:,c --long output:,output-prefix:,help,effect:,rate:,pixfmt:,compensate -- "$@")"
 eval set -- "$ARGS"
 while true; do
         case "$1" in
@@ -79,6 +80,10 @@ while true; do
         -p | --pixfmt)
             pixfmt="$2"
             shift 2
+            ;;
+        -c | --compensate)
+            u8comp='y'
+            shift
             ;;
         --)
             set +o nounset
@@ -117,7 +122,7 @@ trap 'cleanup' ERR EXIT
 filename="$(basename "$filepath")"
 base_filename="${filename%.*}"
 output_prefix="${output_prefix:-$base_filename}"
-default_name="$output_prefix"-"$sample_rate"-"$pixfmt"-"$effect"
+default_name="$output_prefix"-"$sample_rate"-"$pixfmt"-"$effect"-"${u8comp-n}"
 output_name="${output_name:-$default_name}"
 
 ffmpeg -hide_banner -loglevel quiet -i "$filepath" -f rawvideo -pix_fmt "$pixfmt" - | \
@@ -132,3 +137,8 @@ parallel -j"$jobs" imageeffect '{1}' "'$effect'" "$tmprow" "$sample_rate" :::: "
 
 find "$tmprow" -type f | sort | xargs cat | \
 ffmpeg -hide_banner -loglevel warning -s "$orig_res" -pix_fmt "$pixfmt" -f rawvideo -i - "$output_name".png
+
+if [[ -n ${u8comp+x} ]]
+then
+    mogrify -evaluate subtract 50% -normalize "$output_name".png
+fi
